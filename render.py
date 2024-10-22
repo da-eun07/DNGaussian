@@ -128,24 +128,47 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         torchvision.utils.save_image(depth_est, os.path.join(depth_path, 'color_{0:05d}'.format(idx) + ".png"))
 
 
-def render_sets(dataset : ModelParams, iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, near : int):
+def render_sets(dataset : ModelParams, latest_iteration : int, pipeline : PipelineParams, skip_train : bool, skip_test : bool, near : int):
     with torch.no_grad():
         gaussians = GaussianModel(dataset.sh_degree)
-        (model_params, _) = torch.load(os.path.join(dataset.model_path, "chkpnt_latest.pth"))
-        gaussians.restore(model_params)
-        gaussians.neural_renderer.keep_sigma=True
+        checkpoint_files = [f for f in os.listdir(dataset.model_path) if f.endswith('.pth')]
+        for checkpoint_file in checkpoint_files:
+            if checkpoint_file != 'chkpnt_latest.pth':
+                iteration = int(checkpoint_file.split('chkpnt')[1].split('.pth')[0])
+            else:
+                iteration = latest_iteration
+            
+            (model_params, _) = torch.load(os.path.join(dataset.model_path, checkpoint_file))
+            gaussians.restore(model_params)
+            gaussians.neural_renderer.keep_sigma=True
+            
+            scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
+            
+            bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+            background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+            
+            render_set(dataset.model_path, "eval", scene.loaded_iter, scene.getEvalCameras(), gaussians, pipeline, background, near)
+            if not skip_train:
+                render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background)
+            
+            if not skip_test:
+                render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
 
-        scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
+        # (model_params, _) = torch.load(os.path.join(dataset.model_path, "chkpnt_latest.pth"))
+        # gaussians.restore(model_params)
+        # gaussians.neural_renderer.keep_sigma=True
 
-        bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
-        background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+        # scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
 
-        render_set(dataset.model_path, "eval", scene.loaded_iter, scene.getEvalCameras(), gaussians, pipeline, background, near)
-        if not skip_train:
-             render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background)
+        # bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
+        # background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
-        if not skip_test:
-             render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
+        # render_set(dataset.model_path, "eval", scene.loaded_iter, scene.getEvalCameras(), gaussians, pipeline, background, near)
+        # if not skip_train:
+        #      render_set(dataset.model_path, "train", scene.loaded_iter, scene.getTrainCameras(), gaussians, pipeline, background)
+
+        # if not skip_test:
+        #      render_set(dataset.model_path, "test", scene.loaded_iter, scene.getTestCameras(), gaussians, pipeline, background)
 
 if __name__ == "__main__":
     # Set up command line argument parser

@@ -213,13 +213,17 @@ def readColmapSceneInfo(path, images, dataset, eval, rand_pcd, mvs_pcd, llffhold
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
+    ply_path_random = os.path.join(path, "sparse/0/points3D_random.ply")
+    ply_path_curve = os.path.join(path, "points3d_merged_all_2.ply") # name of the point cloud file
+    ply_path = None
+
     if rand_pcd and mvs_pcd:
         print("[warning] Both --rand_pcd and --mvs_pcd are detected, use --mvs_pcd.")
         rand_pcd = False
 
     if rand_pcd:
         print('Init random point cloud.')
-        ply_path = os.path.join(path, "sparse/0/points3D_random.ply")
+        ply_path = ply_path_random
         bin_path = os.path.join(path, "sparse/0/points3D.bin")
         txt_path = os.path.join(path, "sparse/0/points3D.txt")
 
@@ -244,25 +248,71 @@ def readColmapSceneInfo(path, images, dataset, eval, rand_pcd, mvs_pcd, llffhold
         shs = np.random.random((num_pts, 3)) / 255.0
         pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
         storePly(ply_path, xyz, SH2RGB(shs) * 255)
-    elif mvs_pcd:
-        ply_path = os.path.join(path, "3_views/dense/fused.ply")
-        assert os.path.exists(ply_path)
-        pcd = fetchPly(ply_path)
     else:
-        ply_path = os.path.join(path, "sparse/0/points3D.ply")
+        print('Init point cloud from 3D curves.')
+        print('Path:', ply_path_curve)
+        ply_path = ply_path_curve
+    
+
+    if not os.path.exists(ply_path):
+        print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
         bin_path = os.path.join(path, "sparse/0/points3D.bin")
         txt_path = os.path.join(path, "sparse/0/points3D.txt")
-        if not os.path.exists(ply_path):
-            print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
-            try:
-                xyz, rgb, _ = read_points3D_binary(bin_path)
-            except:
-                xyz, rgb, _ = read_points3D_text(txt_path)
-            storePly(ply_path, xyz, rgb)
         try:
-            pcd = fetchPly(ply_path)
+            xyz, rgb, _ = read_points3D_binary(bin_path)
         except:
-            pcd = None
+            xyz, rgb, _ = read_points3D_text(txt_path)
+        storePly(ply_path, xyz, rgb)
+    try:
+        pcd = fetchPly(ply_path)
+    except:
+        pcd = None
+    # if rand_pcd:
+    #     print('Init random point cloud.')
+    #     ply_path = os.path.join(path, "sparse/0/points3D_random.ply")
+    #     bin_path = os.path.join(path, "sparse/0/points3D.bin")
+    #     txt_path = os.path.join(path, "sparse/0/points3D.txt")
+
+    #     try:
+    #         xyz, rgb, _ = read_points3D_binary(bin_path)
+    #     except:
+    #         xyz, rgb, _ = read_points3D_text(txt_path)
+    #     print(xyz.max(0), xyz.min(0))
+
+
+    #     if dataset == "LLFF":
+    #         pcd_shape = (topk_(xyz, 1, 0)[-1] + topk_(-xyz, 1, 0)[-1])
+    #         num_pts = int(pcd_shape.max() * 50)
+    #         xyz = np.random.random((num_pts, 3)) * pcd_shape * 1.3 - topk_(-xyz, 20, 0)[-1]
+    #     elif dataset == "DTU":
+    #         pcd_shape = (topk_(xyz, 100, 0)[-1] + topk_(-xyz, 100, 0)[-1])
+    #         num_pts = 10_00
+    #         xyz = np.random.random((num_pts, 3)) * pcd_shape * 1.3 - topk_(-xyz, 100, 0)[-1] # - 0.15 * pcd_shape
+    #     print(pcd_shape)
+    #     print(f"Generating random point cloud ({num_pts})...")
+
+    #     shs = np.random.random((num_pts, 3)) / 255.0
+    #     pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
+    #     storePly(ply_path, xyz, SH2RGB(shs) * 255)
+    # elif mvs_pcd:
+    #     ply_path = os.path.join(path, "3_views/dense/fused.ply")
+    #     assert os.path.exists(ply_path)
+    #     pcd = fetchPly(ply_path)
+    # else:
+    #     ply_path = os.path.join(path, "sparse/0/points3D.ply")
+    #     bin_path = os.path.join(path, "sparse/0/points3D.bin")
+    #     txt_path = os.path.join(path, "sparse/0/points3D.txt")
+    #     if not os.path.exists(ply_path):
+    #         print("Converting point3d.bin to .ply, will happen only the first time you open the scene.")
+    #         try:
+    #             xyz, rgb, _ = read_points3D_binary(bin_path)
+    #         except:
+    #             xyz, rgb, _ = read_points3D_text(txt_path)
+    #         storePly(ply_path, xyz, rgb)
+    #     try:
+    #         pcd = fetchPly(ply_path)
+    #     except:
+    #         pcd = None
 
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,
@@ -341,10 +391,18 @@ def readNerfSyntheticInfo(path, white_background, eval, rand_pcd, llffhold=8, N_
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
-    ply_path = os.path.join(path, "points3d.ply")
+    ply_path_random = os.path.join(path, "points3d_random.ply")
+    ply_path_curve = os.path.join(path, "points3d_4noiseonly.ply") # name of the point cloud file
+    ply_path = None
     if rand_pcd:
         print('Init random point cloud.')
-    if rand_pcd or not os.path.exists(ply_path):
+        ply_path = ply_path_random
+    else:
+        print('Init point cloud from 3D curves.')
+        print('Path:', ply_path_curve)
+        ply_path = ply_path_curve
+
+    if not os.path.exists(ply_path):
         # Since this data set has no colmap data, we start with random points
         num_pts = 10_000
         print(f"Generating random point cloud ({num_pts})...")

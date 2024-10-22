@@ -34,9 +34,10 @@ try:
 except ImportError:
     TENSORBOARD_FOUND = False
 
+import wandb
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, near_range):
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, near_range, wandb_available):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset, opt)
     gaussians = GaussianModel(dataset.sh_degree)
@@ -166,6 +167,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         loss.backward()
         
+        if wandb_available:
+            wandb.log({"loss": loss.item(), "l1_loss": Ll1.item(), "depth_loss": loss_hard.item(), "reg_loss": loss_reg.item()})
+            
         # ================================================================================
 
         iter_end.record()
@@ -385,6 +389,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--near", type=int, default=0)
+    parser.add_argument("--wandb", action="store_true", default=False)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     # args.checkpoint_iterations.append(args.iterations)
@@ -393,11 +398,19 @@ if __name__ == "__main__":
 
     # Initialize system state (RNG)
     safe_state(args.quiet)
+    
+    if args.wandb:
+        wandb.init(
+            project="dngaussian-llff",
+            config=vars(args),
+        )
 
     # Start GUI server, configure and run training
     # network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.near)
+    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.near, args.wandb)
 
+    if args.wandb:
+        wandb.finish()
     # All done
     print("\nTraining complete.")

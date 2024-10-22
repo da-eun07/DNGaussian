@@ -36,9 +36,10 @@ try:
 except ImportError:
     TENSORBOARD_FOUND = False
 
+import wandb
 # os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, wandb_available):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset, opt)
     gaussians = GaussianModel(dataset.sh_degree)
@@ -172,6 +173,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         loss.backward()
         
+        if wandb_available:
+            wandb.log({"loss": loss, "l1_loss": Ll1, "loss_reg": loss_reg})
         # ================================================================================
 
         iter_end.record()
@@ -237,7 +240,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
 
 
-def training_sh(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training_sh(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, wandb_available):
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset, opt)
     gaussians = GaussianModelSH(dataset.sh_degree)
@@ -329,6 +332,9 @@ def training_sh(dataset, opt, pipe, testing_iterations, saving_iterations, check
 
         loss.backward()
         
+        if wandb_available:
+            wandb.log({"loss": loss, "l1_loss": Ll1})
+
         # ================================================================================
 
         iter_end.record()
@@ -513,6 +519,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     parser.add_argument("--use_SH", action="store_true")
+    parser.add_argument("--wandb", action="store_true", default=False)
     args = parser.parse_args(sys.argv[1:])
     args.save_iterations.append(args.iterations)
     # args.checkpoint_iterations.append(args.iterations)
@@ -522,13 +529,20 @@ if __name__ == "__main__":
     # Initialize system state (RNG)
     safe_state(args.quiet)
 
+    if args.wandb:
+        wandb.init(
+            project="dngaussian-curve", 
+            config=vars(args),
+            )
+        
     # Start GUI server, configure and run training
     # network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
     if args.use_SH:
-        training_sh(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+        training_sh(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.wandb)
     else:
-        training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
-
+        training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.wandb)
+    if args.wandb:
+        wandb.finish()
     # All done
     print("\nTraining complete.")
